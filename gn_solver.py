@@ -12,7 +12,7 @@ class GNSolver:
     Gauss-Newton solver.
 
     Given response vector y, dependent variable x and fit function f, 
-    Minimize sqrt(sum(residual^2)) where residual = f(x, coefficients) - y.
+    Minimize sum(residual^2) where residual = f(x, coefficients) - y.
     """
 
     def __init__(self,
@@ -23,10 +23,10 @@ class GNSolver:
                  init_guess: np.ndarray = None,
                  ):
         """
-        :param fit_function: Function that needs be fitted; y_estimate = fit_function(x, coefficients)
-        :param max_iter: Maximum number of iterations for optimization
-        :param tolerance_difference: Terminate if RMSE difference between iterations smaller than tolerance
-        :param tolerance: Terminate if RMSE is smaller than tolerance
+        :param fit_function: Function that needs be fitted; y_estimate = fit_function(x, coefficients).
+        :param max_iter: Maximum number of iterations for optimization.
+        :param tolerance_difference: Terminate iteration if RMSE difference between iterations smaller than tolerance.
+        :param tolerance: Terminate iteration if RMSE is smaller than tolerance.
         :param init_guess: Initial guess for coefficients.
         """
         self.fit_function = fit_function
@@ -47,10 +47,10 @@ class GNSolver:
         """
         Fit coefficients by minimizing RMSE.
 
-        :param x: Independent variable
-        :param y: Response vector
-        :param init_guess: Initial guess for coefficients
-        :return: Fitted coefficients
+        :param x: Independent variable.
+        :param y: Response vector.
+        :param init_guess: Initial guess for coefficients.
+        :return: Fitted coefficients.
         """
 
         self.x = x
@@ -86,8 +86,8 @@ class GNSolver:
         """
         Predict response for given x based on fitted coefficients.
 
-        :param x: Independent variable
-        :return: Response vector
+        :param x: Independent variable.
+        :return: Response vector.
         """
         return self.fit_function(x, self.coefficients)
 
@@ -95,7 +95,7 @@ class GNSolver:
         """
         Get residual after fit.
 
-        :return: Residual, y_fitted - y
+        :return: Residual (y_fitted - y).
         """
         return self._calculate_residual(self.coefficients)
 
@@ -115,19 +115,20 @@ class GNSolver:
                             step: float = 10 ** (-6)) -> np.ndarray:
         """
         Calculate Jacobian matrix numerically.
+        J_ij = d(r_i)/d(x_j)
         """
         y0 = self._calculate_residual(x0)
 
-        partial_derivatives = []
+        jacobian = []
         for i, parameter in enumerate(x0):
             x = x0.copy()
             x[i] += step
             y = self._calculate_residual(x)
             derivative = (y - y0) / step
-            partial_derivatives.append(derivative)
-        partial_derivatives = np.array(partial_derivatives).T
+            jacobian.append(derivative)
+        jacobian = np.array(jacobian).T
 
-        return partial_derivatives
+        return jacobian
 
     @staticmethod
     def _calculate_pseudoinverse(x: np.ndarray) -> np.ndarray:
