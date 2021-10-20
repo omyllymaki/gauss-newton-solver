@@ -17,20 +17,26 @@ class GNSolver:
 
     def __init__(self,
                  fit_function: Callable,
+                 residual_function: Callable,
                  max_iter: int = 1000,
-                 tolerance_difference: float = 10 ** (-16),
-                 tolerance: float = 10 ** (-9),
+                 step_size=1e-9,
+                 tolerance_difference: float = 1e-16,
+                 tolerance: float = 1e-9,
                  init_guess: np.ndarray = None,
                  ):
         """
-        :param fit_function: Function that needs be fitted; y_estimate = fit_function(x, coefficients).
+        :param fit_function: Function that needs to be fitted; y_estimate = fit_function(x, coefficients).
+        :param residual_function: Function that calculates residuals; residuals = residual_function(y_estimate, y).
         :param max_iter: Maximum number of iterations for optimization.
+        :param step_size: Step size for numerical Jacobian calculation.
         :param tolerance_difference: Terminate iteration if RMSE difference between iterations smaller than tolerance.
         :param tolerance: Terminate iteration if RMSE is smaller than tolerance.
         :param init_guess: Initial guess for coefficients.
         """
         self.fit_function = fit_function
+        self.residual_function = residual_function
         self.max_iter = max_iter
+        self.step_size = step_size
         self.tolerance_difference = tolerance_difference
         self.tolerance = tolerance
         self.coefficients = None
@@ -65,7 +71,7 @@ class GNSolver:
         rmse_prev = np.inf
         for k in range(self.max_iter):
             residual = self.get_residual()
-            jacobian = self._calculate_jacobian(self.coefficients, step=10 ** (-6))
+            jacobian = self._calculate_jacobian(self.coefficients, step=self.step_size)
             self.coefficients = self.coefficients - self._calculate_pseudoinverse(jacobian) @ residual
             rmse = np.sqrt(np.sum(residual ** 2))
             logger.info(f"Round {k}: RMSE {rmse}")
@@ -108,11 +114,11 @@ class GNSolver:
 
     def _calculate_residual(self, coefficients: np.ndarray) -> np.ndarray:
         y_fit = self.fit_function(self.x, coefficients)
-        return y_fit - self.y
+        return self.residual_function(y_fit, self.y)
 
     def _calculate_jacobian(self,
                             x0: np.ndarray,
-                            step: float = 10 ** (-6)) -> np.ndarray:
+                            step: float) -> np.ndarray:
         """
         Calculate Jacobian matrix numerically.
         J_ij = d(r_i)/d(x_j)
