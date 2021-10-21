@@ -18,8 +18,10 @@ class GNSolver:
     def __init__(self,
                  fit_function: Callable,
                  residual_function: Callable,
+                 update_step_size: float = 1.0,
+                 min_iter: int = 1,
                  max_iter: int = 1000,
-                 step_size=1e-9,
+                 jacobian_step_size=1e-9,
                  tolerance_difference: float = 1e-16,
                  tolerance: float = 1e-9,
                  init_guess: np.ndarray = None,
@@ -27,16 +29,20 @@ class GNSolver:
         """
         :param fit_function: Function that needs to be fitted; y_estimate = fit_function(x, coefficients).
         :param residual_function: Function that calculates residuals; residuals = residual_function(y_estimate, y).
+        :param update_step_size: Determines steps size (fraction) for coefficient update; should be in range [0, 1].
+        :param min_iter: Minimum number of iterations for optimization.
         :param max_iter: Maximum number of iterations for optimization.
-        :param step_size: Step size for numerical Jacobian calculation.
+        :param jacobian_step_size: Step size for numerical Jacobian calculation.
         :param tolerance_difference: Terminate iteration if RMSE difference between iterations smaller than tolerance.
         :param tolerance: Terminate iteration if RMSE is smaller than tolerance.
         :param init_guess: Initial guess for coefficients.
         """
         self.fit_function = fit_function
         self.residual_function = residual_function
+        self.update_step_size = update_step_size
+        self.min_iter = min_iter
         self.max_iter = max_iter
-        self.step_size = step_size
+        self.epsilon = jacobian_step_size
         self.tolerance_difference = tolerance_difference
         self.tolerance = tolerance
         self.coefficients = None
@@ -67,20 +73,29 @@ class GNSolver:
         if init_guess is None:
             raise Exception("Initial guess needs to be provided")
 
-        self.coefficients = self.init_guess
+        coefficients = self.init_guess.copy()
+        self.coefficients = coefficients.copy()
         rmse_prev = np.inf
+        residual = self._calculate_residual(init_guess)
+        rmse_best = np.sqrt(np.sum(residual ** 2))
+        logger.info(f"RMSE with init guess {rmse_best}")
         for k in range(self.max_iter):
-            residual = self.get_residual()
-            jacobian = self._calculate_jacobian(self.coefficients, step=self.step_size)
-            self.coefficients = self.coefficients - self._calculate_pseudoinverse(jacobian) @ residual
+            residual = self._calculate_residual(coefficients)
+            jacobian = self._calculate_jacobian(coefficients, step=self.epsilon)
+            delta = self.update_step_size * self._calculate_pseudoinverse(jacobian) @ residual
+            coefficients = coefficients - delta
             rmse = np.sqrt(np.sum(residual ** 2))
             logger.info(f"Round {k}: RMSE {rmse}")
-            if self.tolerance_difference is not None:
-                diff = np.abs(rmse_prev - rmse)
-                if diff < self.tolerance_difference:
-                    logger.info("RMSE difference between iterations smaller than tolerance. Fit terminated.")
-                    return self.coefficients
-            if rmse < self.tolerance:
+
+            if rmse < rmse_best:
+                rmse_best = rmse
+                self.coefficients = coefficients.copy()
+
+            diff = rmse_prev - rmse
+            if diff < self.tolerance_difference and k >= self.min_iter:
+                logger.info("RMSE difference between iterations smaller than tolerance. Fit terminated.")
+                return self.coefficients
+            if rmse < self.tolerance and k >= self.min_iter:
                 logger.info("RMSE error smaller than tolerance. Fit terminated.")
                 return self.coefficients
             rmse_prev = rmse
