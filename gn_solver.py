@@ -11,8 +11,9 @@ class GNSolver:
     """
     Gauss-Newton solver.
 
-    Given response vector y, dependent variable x and fit function f,
-    Minimize sum(residual^2) where residual = f(x, coefficients) - y.
+    Given response vector y, dependent variable x, fit function and residual function,
+
+    Minimize sum(residual^2) by optimizing coefficients using damped Gauss-Newton method.
     """
 
     def __init__(self,
@@ -121,7 +122,7 @@ class GNSolver:
 
         return self.coefficients
 
-    def predict(self, x: np.ndarray):
+    def predict(self, x: np.ndarray) -> np.ndarray:
         """
         Predict response for given x based on fitted coefficients.
 
@@ -134,14 +135,15 @@ class GNSolver:
         """
         Get residual after fit.
 
-        :return: Residual (y_fitted - y).
+        :return: Residual.
         """
         return self._calculate_residual(self.coefficients)
 
     def get_estimate(self) -> np.ndarray:
         """
         Get estimated response vector based on fit.
-        :return: Response vector
+
+        :return: Response vector.
         """
         return self.fit_function(self.x, self.coefficients)
 
