@@ -84,6 +84,7 @@ class GNSolver:
             jacobian = self._calculate_jacobian(coefficients, step=self.epsilon)
             delta = self.update_step_size * self._calculate_pseudoinverse(jacobian) @ residual
             coefficients = coefficients - delta
+            residual = self._calculate_residual(coefficients)
             rmse = np.sqrt(np.sum(residual ** 2))
             logger.info(f"Round {k}: RMSE {rmse}")
 
