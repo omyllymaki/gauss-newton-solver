@@ -28,12 +28,13 @@ def main():
     solver = GNSolver(fit_function=func,
                       residual_function=residual_func,
                       max_iter=100,
-                      tolerance_difference=10 ** (-6))
+                      tolerance_difference=-1)
     init_guess = 1000000 * np.random.random(len(COEFFICIENTS))
     _ = solver.fit(x, yn, init_guess)
     fit = solver.get_estimate()
     residual = solver.get_residual()
 
+    plt.subplot(1, 2, 1)
     plt.plot(x, y, label="Original, noiseless signal", linewidth=2)
     plt.plot(x, yn, label="Noisy signal", linewidth=2)
     plt.plot(x, fit, label="Fit", linewidth=2)
@@ -43,6 +44,9 @@ def main():
     plt.ylabel("Y")
     plt.grid()
     plt.legend()
+    plt.subplot(1, 2, 2)
+    plt.plot(solver.rmse_list, "-o")
+    plt.yscale('log')
     plt.show()
 
 

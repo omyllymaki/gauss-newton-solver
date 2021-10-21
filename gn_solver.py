@@ -11,40 +11,41 @@ class GNSolver:
     """
     Gauss-Newton solver.
 
-    Given response vector y, dependent variable x and fit function f, 
+    Given response vector y, dependent variable x and fit function f,
     Minimize sum(residual^2) where residual = f(x, coefficients) - y.
     """
 
     def __init__(self,
                  fit_function: Callable,
                  residual_function: Callable,
-                 update_step_size: float = 1.0,
                  min_iter: int = 1,
                  max_iter: int = 1000,
                  jacobian_step_size=1e-9,
                  tolerance_difference: float = 1e-16,
                  tolerance: float = 1e-9,
+                 damping_factors: np.ndarray = np.logspace(0, -3, 20),
                  init_guess: np.ndarray = None,
                  ):
         """
         :param fit_function: Function that needs to be fitted; y_estimate = fit_function(x, coefficients).
         :param residual_function: Function that calculates residuals; residuals = residual_function(y_estimate, y).
-        :param update_step_size: Determines steps size (fraction) for coefficient update; should be in range [0, 1].
         :param min_iter: Minimum number of iterations for optimization.
         :param max_iter: Maximum number of iterations for optimization.
         :param jacobian_step_size: Step size for numerical Jacobian calculation.
         :param tolerance_difference: Terminate iteration if RMSE difference between iterations smaller than tolerance.
         :param tolerance: Terminate iteration if RMSE is smaller than tolerance.
+        :param damping_factors: Array of damping factors (from largest to smallest) that will be tried in update step.
         :param init_guess: Initial guess for coefficients.
         """
         self.fit_function = fit_function
         self.residual_function = residual_function
-        self.update_step_size = update_step_size
         self.min_iter = min_iter
         self.max_iter = max_iter
         self.epsilon = jacobian_step_size
         self.tolerance_difference = tolerance_difference
         self.tolerance = tolerance
+        self.damping_factors = damping_factors
+        self.rmse_list = None
         self.coefficients = None
         self.x = None
         self.y = None
@@ -67,6 +68,7 @@ class GNSolver:
 
         self.x = x
         self.y = y
+        self.rmse_list = []
         if init_guess is not None:
             self.init_guess = init_guess
 
@@ -78,20 +80,35 @@ class GNSolver:
         rmse_prev = np.inf
         residual = self._calculate_residual(init_guess)
         rmse_best = np.sqrt(np.sum(residual ** 2))
-        logger.info(f"RMSE with init guess {rmse_best}")
+        logger.info(f"RMSE with init guess: {rmse_best:0.3f}")
         for k in range(self.max_iter):
+
+            # Calculate delta for coefficient update
             residual = self._calculate_residual(coefficients)
             jacobian = self._calculate_jacobian(coefficients, step=self.epsilon)
-            delta = self.update_step_size * self._calculate_pseudoinverse(jacobian) @ residual
-            coefficients = coefficients - delta
+            delta = self._calculate_pseudoinverse(jacobian) @ residual
+
+            # Find largest step size that produces smaller RMSE than previous iteration
+            # and update coefficient values with this step size
+            for damping_factor in self.damping_factors:
+                coefficients_candidate = coefficients - damping_factor * delta
+                residual = self._calculate_residual(coefficients_candidate)
+                rmse = np.sqrt(np.sum(residual ** 2))
+                if rmse < rmse_prev:
+                    coefficients = coefficients_candidate.copy()
+                    break
             residual = self._calculate_residual(coefficients)
             rmse = np.sqrt(np.sum(residual ** 2))
-            logger.info(f"Round {k}: RMSE {rmse}")
 
+            logger.info(f"Round {k}: RMSE {rmse:0.3f}, damping factor {damping_factor:0.3f}")
+            self.rmse_list.append(rmse)
+
+            # Update final solution only if we get lowest RMSE so far
             if rmse < rmse_best:
                 rmse_best = rmse
                 self.coefficients = coefficients.copy()
 
+            # Check termination criteria
             diff = rmse_prev - rmse
             if diff < self.tolerance_difference and k >= self.min_iter:
                 logger.info("RMSE difference between iterations smaller than tolerance. Fit terminated.")
