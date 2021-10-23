@@ -1,8 +1,11 @@
 import logging
+from functools import partial
 from typing import Callable
 
 import numpy as np
 from numpy.linalg import pinv
+
+from gss import gss
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +15,6 @@ class GNSolver:
     Gauss-Newton solver.
 
     Given response vector y, dependent variable x, fit function and residual function,
-
     Minimize sum(residual^2) by optimizing coefficients using damped Gauss-Newton method.
     """
 
@@ -24,7 +26,7 @@ class GNSolver:
                  jacobian_step_size=1e-9,
                  tolerance_difference: float = 1e-16,
                  tolerance: float = 1e-9,
-                 damping_factors: np.ndarray = np.logspace(0, -3, 20),
+                 damping_factor_tolerance: float = 0.05,
                  init_guess: np.ndarray = None,
                  ):
         """
@@ -35,7 +37,7 @@ class GNSolver:
         :param jacobian_step_size: Step size for numerical Jacobian calculation.
         :param tolerance_difference: Terminate iteration if RMSE difference between iterations smaller than tolerance.
         :param tolerance: Terminate iteration if RMSE is smaller than tolerance.
-        :param damping_factors: Array of damping factors (from largest to smallest) that will be tried in update step.
+        :param damping_factor_tolerance: Required tolerance for damping factor search.
         :param init_guess: Initial guess for coefficients.
         """
         self.fit_function = fit_function
@@ -45,7 +47,7 @@ class GNSolver:
         self.epsilon = jacobian_step_size
         self.tolerance_difference = tolerance_difference
         self.tolerance = tolerance
-        self.damping_factors = damping_factors
+        self.damping_factor_tol = damping_factor_tolerance
         self.rmse_list = None
         self.coefficients = None
         self.x = None
@@ -84,23 +86,18 @@ class GNSolver:
         logger.info(f"RMSE with init guess: {rmse_best:0.3f}")
         for k in range(self.max_iter):
 
-            # Calculate delta for coefficient update
+            # Calculate delta (direction) for coefficient update
             residual = self._calculate_residual(coefficients)
             jacobian = self._calculate_jacobian(coefficients, step=self.epsilon)
             delta = self._calculate_pseudoinverse(jacobian) @ residual
 
-            # Find largest step size that produces smaller RMSE than previous iteration
-            # and update coefficient values with this step size
-            for damping_factor in self.damping_factors:
-                coefficients_candidate = coefficients - damping_factor * delta
-                residual = self._calculate_residual(coefficients_candidate)
-                rmse = np.sqrt(np.sum(residual ** 2))
-                if rmse < rmse_prev:
-                    coefficients = coefficients_candidate.copy()
-                    break
+            # Find damping factor (step size) that approximately minimizes RMSE in determined direction
+            damping_factor = self._find_damping_factor(coefficients, delta)
+
+            # Update coefficients
+            coefficients = coefficients - damping_factor * delta
             residual = self._calculate_residual(coefficients)
             rmse = np.sqrt(np.sum(residual ** 2))
-
             logger.info(f"Round {k}: RMSE {rmse:0.3f}, damping factor {damping_factor:0.3f}")
             self.rmse_list.append(rmse)
 
@@ -111,10 +108,10 @@ class GNSolver:
 
             # Check termination criteria
             diff = rmse_prev - rmse
-            if diff < self.tolerance_difference and k >= self.min_iter:
+            if diff <= self.tolerance_difference and k >= self.min_iter:
                 logger.info("RMSE difference between iterations smaller than tolerance. Fit terminated.")
                 return self.coefficients
-            if rmse < self.tolerance and k >= self.min_iter:
+            if rmse <= self.tolerance and k >= self.min_iter:
                 logger.info("RMSE error smaller than tolerance. Fit terminated.")
                 return self.coefficients
             rmse_prev = rmse
@@ -170,6 +167,16 @@ class GNSolver:
         jacobian = np.array(jacobian).T
 
         return jacobian
+
+    def _find_damping_factor(self, coefficients, delta):
+        f = partial(self._calculate_damping_factor_cost, coefficients=coefficients, delta=delta)
+        d_min, d_max = gss(f, 0.0, 1.0, self.damping_factor_tol)
+        return (d_min + d_max) / 2
+
+    def _calculate_damping_factor_cost(self, damping_factor, coefficients, delta):
+        coefficients_candidate = coefficients - damping_factor * delta
+        residual = self._calculate_residual(coefficients_candidate)
+        return np.sqrt(np.sum(residual ** 2))
 
     @staticmethod
     def _calculate_pseudoinverse(x: np.ndarray) -> np.ndarray:
