@@ -28,7 +28,7 @@ def main():
     solver = GNSolver(fit_function=func,
                       residual_function=residual_func,
                       max_iter=100,
-                      tolerance_difference=-1)
+                      tolerance_difference=0)
     init_guess = 1000000 * np.random.random(len(COEFFICIENTS))
     _ = solver.fit(x, yn, init_guess)
     fit = solver.get_estimate()
