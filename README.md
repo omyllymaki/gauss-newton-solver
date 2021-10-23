@@ -14,11 +14,3 @@ Install requirements by running
 ```
 pip3 install -r requirements.txt
 ```
-
-## Usage
-
-Run sample by running
-
-```
-python3 sample.py
-```
